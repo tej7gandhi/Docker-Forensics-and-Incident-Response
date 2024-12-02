@@ -1,0 +1,139 @@
+#!/bin/bash
+
+# Variables
+ARTIFACTS_DIR=""
+IMAGES=""
+DOCKER_CONTAINERS=()
+CHECKBOX_VALUES=()
+
+# Function to display the main menu
+show_menu() {
+    echo "Select tasks to perform (separate choices with spaces):"
+    echo "1) Docker File Changes"
+    echo "2) Docker Inspection Details"
+    echo "3) Docker Top Command Details"
+    echo "4) Docker Snapshot"
+    echo "5) Docker Process Description Tree"
+    echo "6) File Differences"
+    echo "7) Information Regarding Dockers"
+    echo "8) Copy Logs of the Host System"
+    echo "9) Copy Configuration of the Host System"
+    echo "10) Copy Command History"
+    echo "11) Capture All Docker Images Present"
+    echo "12) Copy Firewall Logs"
+    echo "13) Network Connections"
+    echo "14) Host Network Details"
+    echo "15) List All Services Running"
+    echo "16) List All Scheduled Tasks"
+    echo
+
+    read -p "Enter your choices (e.g., 1 2 3): " -a CHECKBOX_VALUES
+}
+
+# Function to get inputs
+get_inputs() {
+    echo "Available Docker Containers:"
+    docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Status}}" |
+    {
+        read -r header
+        echo "Index  $header"
+        local index=0
+        while IFS= read -r line; do
+            echo "$index) $line"
+            index=$((index + 1))
+        done
+    }
+   
+    echo "Enter the directory to store artifacts:"
+    read -r ARTIFACTS_DIR
+    echo "Enter image numbers (comma-separated):"
+    read -r IMAGES
+
+    DOCKER_CONTAINERS=($(docker ps -q))
+}
+
+# Function to process tasks
+process_tasks() {
+    echo "Processing selected tasks..."
+    mkdir -p "$ARTIFACTS_DIR"
+    local image_list=($(echo "$IMAGES" | tr ',' ' '))
+
+    for image in "${image_list[@]}"; do
+        local container="${DOCKER_CONTAINERS[$image]}"
+
+        for task in "${CHECKBOX_VALUES[@]}"; do
+            case $task in
+                1)
+                    docker container diff "$container" > "${ARTIFACTS_DIR}/dockerfilechanges_${container}.txt"
+                    ;;
+                2)
+                    docker inspect "$container" > "${ARTIFACTS_DIR}/dockerinspect_${container}.txt"
+                    ;;
+                3)
+                    docker top "$container" > "${ARTIFACTS_DIR}/dockertop_${container}.txt"
+                    ;;
+                4)
+                    docker export "$container" -o "${ARTIFACTS_DIR}/${container}.tar"
+                    ;;
+                5)
+                    pstree > "${ARTIFACTS_DIR}/dockerprocesses_${container}.txt"
+                    ;;
+                6)
+                    docker container diff "$container" > "${ARTIFACTS_DIR}/dockerfilediffs_${container}.txt"
+                    ;;
+                7)
+                    docker info > "${ARTIFACTS_DIR}/dockerinfo_${container}.txt"
+                    ;;
+                8)
+                    cp -r /var/log "$ARTIFACTS_DIR"
+                    ;;
+                9)
+                    cp -r /etc "$ARTIFACTS_DIR"
+                    ;;
+                10)
+                    history > "${ARTIFACTS_DIR}/history_${container}.txt"
+                    ;;
+                11)
+                    docker images > "${ARTIFACTS_DIR}/dockerimages.txt"
+                    ;;
+                12)
+                    iptables -L > "${ARTIFACTS_DIR}/firewall_logs.txt"
+                    ;;
+                13)
+                    netstat -ant > "${ARTIFACTS_DIR}/network_connections.txt"
+                    ;;
+                14)
+                    ifconfig > "${ARTIFACTS_DIR}/network_details.txt"
+                    ;;
+                15)
+                    service --status-all > "${ARTIFACTS_DIR}/services.txt"
+                    ;;
+                16)
+                    crontab -l > "${ARTIFACTS_DIR}/crontab_tasks.txt"
+                    ;;
+                *)
+                    echo "Invalid task: $task"
+                    ;;
+            esac
+        done
+    done
+}
+
+# Function to zip artifacts
+zip_artifacts() {
+    zip -r "${ARTIFACTS_DIR}/artifacts.zip" "$ARTIFACTS_DIR"
+    echo "Artifacts zipped at ${ARTIFACTS_DIR}/artifacts.zip"
+}
+
+# Main script execution
+echo "Welcome to Docker Forensics CLI GUI."
+read -p "Proceed? (y/n): " PROCEED
+if [[ $PROCEED =~ ^[Yy]$ ]]; then
+    get_inputs
+    show_menu
+    process_tasks
+    zip_artifacts
+else
+    echo "Operation canceled."
+    exit 1
+fi
